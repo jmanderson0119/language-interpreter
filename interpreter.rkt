@@ -83,8 +83,8 @@
 (define firstoperand 
     (lambda (expr state) 
         (if (or (number? (cadr expr)) (boolean? (cadr expr)))
-            (list (caddr expr))
-            (eval-expression (caddr expr) state))))
+            (list (cadr expr))
+            (eval-expression (cadr expr) state))))
 
 ;; abstraction for second operand
 (define secondoperand
@@ -215,9 +215,4 @@
             ((null? syntaxtree) (void))
             ((eq? (stmt-type (car syntaxtree)) 'return) (eval-statement (car syntaxtree) state))
             (else (eval-syntaxtree (cdr syntaxtree) (eval-statement (car syntaxtree) state))))))
-
-;(interpret "test1.txt")
-
-
-;(eval-expression (condition (caddr (parser "test1.txt"))) '((x 20) (y 128)))
-(condition (caddr (parser "test1.txt")))
+            
