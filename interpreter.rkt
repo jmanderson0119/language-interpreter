@@ -82,15 +82,15 @@
 ;; abstraction for first operand
 (define firstoperand 
     (lambda (expr state) 
-        (if (or (number? (cadr expr)) (boolean? (cadr expr)))
-            (list (cadr expr))
+        (cond
+            ((or (number? (cadr expr)) (boolean? (cadr expr)) (symbol? (cadr expr))) (list (cadr expr)))
             (eval-expression (cadr expr) state))))
 
 ;; abstraction for second operand
 (define secondoperand
     (lambda (expr state) 
-        (if (or (number? (caddr expr)) (boolean? (caddr expr)))
-            (list (caddr expr))
+        (cond
+            ((or (number? (caddr expr)) (boolean? (caddr expr)) (symbol? (caddr expr))) (list (caddr expr)))
             (eval-expression (caddr expr) state))))
 
 ;; abstraction for unary condition
@@ -111,7 +111,7 @@
             ((and (list? expr) (eq? (expr-type expr) '*)) (* (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
             ((and (list? expr) (eq? (expr-type expr) '/)) (quotient (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
             ((and (list? expr) (eq? (expr-type expr) '%)) (remainder (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
-            ((and (list? expr) (eq? (expr-type expr) '==)) (eq? (eval-expression (firstoperand expr) state state) (eval-expression (secondoperand expr state) state)))
+            ((and (list? expr) (eq? (expr-type expr) '==)) (eq? (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
             ((and (list? expr) (eq? (expr-type expr) '!=)) (not (eq? (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state))))
             ((and (list? expr) (eq? (expr-type expr) '<)) (< (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
             ((and (list? expr) (eq? (expr-type expr) '>)) (> (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
@@ -142,10 +142,10 @@
 
 ;; abstraction for the variable value
 (define varval 
-    (lambda (stmt)
-        (if (or (number? (caddr stmt)) (boolean? (caddr stmt)))
-            (list (caddr stmt))
-            (caddr stmt))))
+    (lambda (stmt state)
+        (cond
+            ((or (number? (caddr stmt)) (boolean? (caddr stmt)) (symbol? (caddr stmt))) (list (caddr stmt)))
+            (eval-expression (caddr stmt) state))))
 
 ;; abstraction for type of statement
 (define stmt-type (lambda (stmt) (car stmt)))
@@ -193,8 +193,8 @@
     (lambda (stmt state)
         (cond
             ((and (eq? (stmt-type stmt) 'var) (declaration-only? stmt)) (create-binding (varname stmt) 'null state))
-            ((eq? (stmt-type stmt) 'var) (create-binding (varname stmt) (eval-expression (varval stmt) state) state))
-            ((eq? (stmt-type stmt) '=) (update-binding (varname stmt) (eval-expression (varval stmt) state) state))
+            ((eq? (stmt-type stmt) 'var) (create-binding (varname stmt) (eval-expression (varval stmt state) state) state))
+            ((eq? (stmt-type stmt) '=) (update-binding (varname stmt) (eval-expression (varval stmt state) state) state))
             ((eq? (stmt-type stmt) 'return) (eval-return stmt state))
             ((and (eq? (stmt-type stmt) 'if) (no-else-statement? stmt)) (eval-if-then stmt state))
             ((eq? (stmt-type stmt) 'if) (eval-if-then-else stmt state))
@@ -215,4 +215,5 @@
             ((null? syntaxtree) (void))
             ((eq? (stmt-type (car syntaxtree)) 'return) (eval-statement (car syntaxtree) state))
             (else (eval-syntaxtree (cdr syntaxtree) (eval-statement (car syntaxtree) state))))))
-            
+
+(interpret "test1.txt")
