@@ -12,6 +12,9 @@
 
 ;;;; STATE MANAGEMENT ABSTRACTION
 
+;; getter
+(define get (lambda (state) state))
+
 ;; abstraction for the current variable in the state recursion
 (define curr-variable (lambda (state) (caar state)))
 
@@ -34,27 +37,27 @@
 ;;;; STATE MANAGEMENT FUNCTIONS
 
 ;; search for a variable in the specified state
-(define lookup
+(define invoke
     (lambda (var state)
         (cond 
             ((null? state) #f)
             ((eq? var (curr-variable state)) #t)
-            (else (lookup var (remaining-state state))))))
+            (else (invoke var (remaining-state state))))))
 
-;; invoke a value from a known binding
-(define invoke
+;; lookup a value from a known binding
+(define lookup
     (lambda (var state)
         (cond 
-            ((not (lookup var state)) (error-message))
+            ((not (invoke var state)) (error-message))
             ((eq? var (curr-variable state)) (curr-val state))
-            (invoke var (remaining-state)))))
+            (else (lookup var (remaining-state state))))))
 
 ;; add a new binding to the state
 (define create-binding
     (lambda (var val state)
         (cond 
             ((null? state) (cons (list var val) state))
-            ((not (lookup var state)) (cons '(var val) state))
+            ((not (invoke var state)) (cons (list var val) state))
             (else (create-binding-error-message)))))
 
 ;; update a binding currently in the state
@@ -62,17 +65,16 @@
     (lambda (var val state)
         (cond 
             ((null? state) (error-message))
-            ((lookup var state) (create-binding var val (delete-binding var state)))
+            ((invoke var state) (create-binding var val (delete-binding var state)))
             (else (create-binding var val state)))))
 
 ;; delete a binding currently in the state
 (define delete-binding
     (lambda (var state)
         (cond
-            ((or (null? state) (not (lookup var state))) state)
+            ((or (null? state) (not (invoke var state))) state)
             ((eq? var (curr-variable state)) (remaining-state state))
             (else (cons (car state) (delete-binding var (remaining-state state)))))))
-
 
 ;;;; VALUE FUNCTION ABSTRACTION
 
@@ -117,7 +119,7 @@
             ((and (list? expr) (eq? (expr-type expr) '>)) (> (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
             ((and (list? expr) (eq? (expr-type expr) '<=)) (<= (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
             ((and (list? expr) (eq? (expr-type expr) '>=)) (>= (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
-            ((symbol? (expr-type expr)) (invoke (expr-type expr) state)))))
+            ((symbol? (expr-type expr)) (lookup (expr-type expr) state)))))
 
 
 ;;;; STATE FUNCTION ABSTRACTIONS
@@ -216,4 +218,4 @@
             ((eq? (stmt-type (car syntaxtree)) 'return) (eval-statement (car syntaxtree) state))
             (else (eval-syntaxtree (cdr syntaxtree) (eval-statement (car syntaxtree) state))))))
 
-(interpret "test1.txt")
+(interpret "test1.txt")            
