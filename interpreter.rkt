@@ -1,5 +1,5 @@
 ;;;; ************************
-;;;; Jacob Anderson (jma195), Hayden Caldwell (abc123), David Kraus (abc123)
+;;;; Jacob Anderson (jma195), Hayden Caldwell (hwc11), David Kraus (dek90)
 ;;;; CSDS 345 Spring 2024
 ;;;; Simple Language Interpreter Project
 ;;;; ************************
