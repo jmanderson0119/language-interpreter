@@ -51,7 +51,6 @@
             ((not (invoke var state)) (error-message))
             ((eq? var (curr-variable state)) (curr-val state))
             (invoke var (remaining-state state)))))
-            (else (lookup var (remaining-state state))))))
 
 ;; add a new binding to the state
 (define create-binding
