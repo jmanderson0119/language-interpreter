@@ -50,14 +50,14 @@
         (cond 
             ((not (invoke var state)) (error-message))
             ((eq? var (curr-variable state)) (curr-val state))
-            (invoke var (remaining-state)))))
+            (invoke var (remaining-state state)))))
 
 ;; add a new binding to the state
 (define create-binding
     (lambda (var val state)
         (cond 
             ((null? state) (cons (list var val) state))
-            ((not (lookup var state)) (cons '(var val) state))
+            ((not (lookup var state)) (cons (list var val) state))
             (else (create-binding-error-message)))))
 
 ;; update a binding currently in the state
@@ -79,20 +79,22 @@
 ;;;; VALUE FUNCTION ABSTRACTION
 
 ;; abstraction for type of expression
-(define expr-type (lambda (expr) (car expr)))
-
+(define expr-type (lambda (expr) 
+                    (if (list? expr)
+                    (car expr)
+                    expr)))
 ;; abstraction for first operand
 (define firstoperand 
     (lambda (expr state) 
-        (cond
-            ((or (number? (cadr expr)) (boolean? (cadr expr)) (symbol? (cadr expr))) (list (cadr expr)))
+        (if (or (number? (cadr expr)) (boolean? (cadr expr)))
+            (list (cadr expr))
             (eval-expression (cadr expr) state))))
 
 ;; abstraction for second operand
 (define secondoperand
     (lambda (expr state) 
-        (cond
-            ((or (number? (caddr expr)) (boolean? (caddr expr)) (symbol? (caddr expr))) (list (caddr expr)))
+        (if (or (number? (caddr expr)) (boolean? (caddr expr)))
+            (list (caddr expr))
             (eval-expression (caddr expr) state))))
 
 ;; abstraction for unary condition
@@ -119,13 +121,19 @@
             ((and (list? expr) (eq? (expr-type expr) '>)) (> (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
             ((and (list? expr) (eq? (expr-type expr) '<=)) (<= (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
             ((and (list? expr) (eq? (expr-type expr) '>=)) (>= (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
+            ((and (list? expr) (eq? (expr-type expr) '||)) (or (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
+            ((and (list? expr) (eq? (expr-type expr) '&&)) (and (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
             ((symbol? (expr-type expr)) (invoke (expr-type expr) state)))))
 
 
 ;;;; STATE FUNCTION ABSTRACTIONS
 
 ;; abstraction for return value
-(define returnval (lambda (stmt) (list (cadr stmt))))
+(define returnval
+  (lambda (stmt)
+    (cond
+    ((list? (cadr stmt)) (cadr stmt))
+    (else (list (cadr stmt))))))
 
 ;; abstraction for conditional-statement condition
 (define condition (lambda (stmt) (cadr stmt)))
@@ -217,4 +225,60 @@
             ((null? syntaxtree) (void))
             ((eq? (stmt-type (car syntaxtree)) 'return) (eval-statement (car syntaxtree) state))
             (else (eval-syntaxtree (cdr syntaxtree) (eval-statement (car syntaxtree) state))))))
+                   
+(interpret "test1.txt")
+;test 1 works
+;test 2 works
+;test 3 works
+;test 4 works
+;test 5 
+;   *: contract violation
+;   expected: number?  
+;   given: #<void>
+;test 6 
+;   <=: contract violation
+;   expected: real?     
+;   given: #<void>    
+;test 7 
+;   >=: contract violation
+;   expected: real?     
+;   given: #<void> 
+;test 8 works
+;test 9 
+;   firstoperand: arity mismatch;
+;   the expected number of arguments does not match the given number
+;   expected: 2
+;   given: 1
+;test 10 works
+;test 11
+;   returns 11
+;test 12 works
+;test 13 
+;   variable has not been declared
+;test 14
+;   +: contract violation
+;   expected: number?  
+;   given: #<void>  
+;test 15 
+;   variable has not been declared
+;test 16 
+;   contract violation
+;   expected: real?    
+;   given: #<void> 
+;test 17 
+;   firstoperand: arity mismatch;
+;   the expected number of arguments does not match the given number
+;   expected: 2
+;   given: 1
+;test 18 
+;   returns #t not true
+;test 19
+;   contract violation        
+;   expected: (cons/c pair? any/c)
+;   given: #<void>
+;test 20
+;   *: contract violation
+;   expected: number?  
+;   given: #<void>
+;
             
