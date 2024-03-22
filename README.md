@@ -1,87 +1,74 @@
+In this homework, you will expand on the interpreter of part 1 adding code blocks as well as "goto" type constructs: break, continue, (true) return, and throw. We still assume all variables store either an integer or a boolean value. For those wanting an extra challenge: you are to again assume that expressions can have side effects. Specifically, you should assume that any expression can include an assignment operator that returns a value.
+
+Please note: a portion of your grade in this project will be correcting the errors you had in Part 1.
 # The Language
 
-In this project, you are to create an interpreter for a very simple Java/C-ish language. The language has variables, assignment statements, mathematical expressions, comparison operators, boolean operators, if statements, while statements, and return statements.
-
-An example program is as follows:
+The parser you used in part 1 supports all of the language features used in this assignment. Here are the new language constructs you need to implement.  There are three "gotos": break, continue, and throw.  We also will have blocks of code, code inside curly braces.  With a block, any variable declared inside the block are only in scope in that block.
 
 ```
-var x;
-x = 10;
-var y = 3 * x + 5;
-while (y % x != 3)
-  y = y + 1;
-if (x > y)
-  return x;
-else if (x * x > y)
-  return x * x;
-else if (x * (x + x) > y)
-  return x * (x + x);
-else
-  return y - 1;
+break;             =>   (break)
+continue;          =>   (continue)
+throw e;           =>   (throw e)
+
+if (i < j) {       =>   (if (< i j) (begin (= i (+ i 1)) (= j (+ j 1))))
+  i = i + 1;
+  j = j - 1;
+}
+
+try {                      =>   (try body (catch (e) body) (finally body))
+  body
+}
+catch (e) {
+  body
+}
+finally {
+  body
+}
+
+Note that either the finally or the catch block may be empty:
+
+try {                     =>  (try body (catch (e) body) ())
+  body
+}
+catch (e) {
+  body
+}
 ```
 
-Note that braces, { and }, are not implemented.
+Please note:
 
-The following mathematical operations are implemented : +, -, *, /, % (including the unary -), the following comparison operators are implemented: ==, !=, <, >, <=. >=, and the following boolean operators: &&, ||, !. Variables may store values of type int as well as true and false. You do not have to detect an error if a program uses a type incorrectly (but it is not hard to add the error check). You do not have to implement short-circuit evaluation of && or ||, but you are welcome to do so.
+- As with C and Java, a block of code can appear anywhere and not only as the body of an if statement or a loop.
+- As with C and Java, the break and continue apply to the immediate loop they are inside. There are no labels in our interpreter, and so there will be no breaking out of multiple loops with one break statement.
+- As there is no type checking in our language, only one catch statement per try block is allowed.
 
-**For those seeking an extra challenge:** The parser supports nested assignment statements as well as assignments inside expressions. Try writing your interpreter so that assignment operators return a value as well as initialize a variable:
+## Sample Programs
 
-```
-var x;
-var y;
-x = y = 10;
-if ((x = x + 1) > y)
-  return x;
-else
-  return y;
-```
+Here are some sample programs in this simple language that you can use to test your interpreter. Please note that these programs cover most of the basic situations, but they are not sufficient to completely test your interpreter. Be certain to write some of your own to fully test your interpreter.
 
-**Sample Programs**
+[part2tests.html](https://canvas.case.edu/courses/41188/files/7412651/download?wrap=1)
 
-Here are some more sample programs in this simple language that you can use to test your interpreter.  Please note that these programs cover most of the basic situations, but they are not sufficient to completely test your interpreter.  Be certain to write some of your own to fully tests your interpreter.
+# General Guidelines
 
-[part1tests.html](https://canvas.case.edu/courses/41188/files/7323321/download?wrap=1)
- 
-# General guidelines
+You do not have to stick to strict functional programming style, but you should avoid global variables and heavy use of let because they will make your life harder. You also should not use set! (except for the recommended state change below).
 
-You are to write your interpreter in Scheme using the functional programming style. For full marks, you should not use variables, only functions and parameters.
+As with the last project, your program should clearly distinguish, by naming convention and code organization, functions that are doing the M_state operations from ones doing the M_value, M_integer and/or M_boolean operations.
 
-Your program should clearly distinguish, by naming convention and code organization, functions that are doing the M_state operations from ones doing the M_value and M_boolean operations. You do not have to call them M_, but your naming convention should be consistent.
+Also as before, the launching point of your interpreter should be a function called interpret that takes a filename, calls parser with the filename, evaluates the parse tree returned by parser, and returns the proper value. You are to maintain a state for the variables and return an error message if the user attempts to use a variable before it is initialized.
+Implementing the "Goto" constructs
 
-You should use good style, indentation and proper commenting so that the code you submit is easy to read and understand.
+You need to use continuations to properly implement return, break, continue, and throw. For each, you have two options. You can make your interpreter tail-recursive with continuation passing style (note that for this version only the M_state functions must be tail recursive, but you will need the M_value, M_integer and M_boolean functions tail recursive in part 3 of the interpreter) or you can use call/cc. Both techniques are equally challenging. You are also welcome to use cps for some of the constructs and call/cc for others.
+The Program State
 
-# Using the Parser
+To implement blocks, you need to make the following **required** change to the state/environment. In addition, because this interpreter does not require a lot of new features from the previous one, there is a **recommended** change to the state that may help reduce the work required when we get to Part 3 of the interpreter.
 
-A parser is provided for you called [simpleParser.rkt](https://canvas.case.edu/courses/41188/files/7323323/download?wrap=1). You will also have to get the file [lex.rkt](https://canvas.case.edu/courses/41188/files/7323322/download?wrap=1)
+**The required change:** Your state must now be a list of layers. Each layer will contain a list of variables and bindings similar to the basic state of part 1. The initial state consist of a single layer. Each time a new block is entered, you must "cons" a new layer to the front of your state (but use abstraction and give the operation a better name than "cons"). Each time a variable is declared, that variable's binding goes into the top layer. Each time a variable is accessed (either to lookup its binding or to change it), the search must start in the top layer and work down. When a block is exited, the layer must be popped off of the state, deleting any variables that were declared inside the block.  This will ensure that a variable is only active and live inside the block in which it is declared.
 
-You can use the parser in your program by including the line (require "simpleParser.rkt") at the top of your homework file. The command assumes simpleParser.rkt is in the same directory as your homework file. If it is not, you will have to include the path to the file in the load command.
+**A reminder about a note from part 1:** Your state needs to store binding pairs, but the exact implementation is up to you. I recommend either a list of binding pairs (for example: ((x 5) (y 12) ...) ), or two lists, one with the variables and one with the values (for example: ((x y ...) (5 12 ...))). The first option will be simpler to program, but the second will be more easily adapted supporting objects at the end of the course.
 
-If you are not using racket, you should use (load "simpleParser.rkt") at the top of your file instead of the require function, and you will need to comment some lines in the simpleParser.rkt and lex.rkt files.
+**The recommended change:** In Part 3 of the interpreter, you will need to implement function/method calls and global variables. Thus, even if you are not doing the extra coding challenge, you will need to handle functions that produce side effects. If you would like a simpler way to deal with side effects, I recommend the following break from strict functional style coding. Instead of binding each variable to its value, we will bind the variable to a box that contains its value. You can think of a box as a pointer to a memory location, and thus the values stored in the environment will be pointers to the actual data (similar to how Java implements non-primitive types). Using boxes, you will not need separate M_value and M_state functions for handling function calls. Instead, the function/method call M_value mapping will be able to change the values of global variables. The Scheme commands are:
 
-To parse a program in our simple language, type the program code into a file, and call (parser "filename"). The parser will return the syntax tree in list format. For example, the syntax tree of the above code is:
-((var x) (= x 10) (var y (+ (* 3 x) 5)) (while (!= (% y x) 3) (= y (+ y 1))) (if (> x y) (return x) (if (> (* x x) y) (return (* x x)) (if (> (* x (+ x x)) y) (return (* x (+ x x))) (return (- y 1))))))
+- (box v): places v into a box and returns the box
+- (unbox b): returns the value stored in box b
+- (set-box! b v): changes the value stored in box b to value v.
 
-Formally, a syntax tree is a list where each sublist corresponds to a statement. The different statements are:
-**variable declaration** 	(var variable) or (var variable value)
-**assignment** 	(= variable expression)
-**return** 	(return expression)
-**if statement** 	(if conditional then-statement optional-else-statement)
-**while statement** 	(while conditional body-statement)
-
-# Your Interpreter Program
-
-You should write a function called interpret that takes a filename, calls parser with the filename, evaluates the syntax tree returned by parser, and returns the proper value. You are to maintain a state for the variables and return an error message if the user attempts to use a variable before it is declared. You can use the Scheme function (error ...) to return the error.
-
-# The State
-
-Your state needs to store binding pairs, but the exact implementation is up to you. I recommend either a list of binding pairs (for example: ((x 5) (y 12) ...) ), or two lists, one with the variables and one with the values (for example: ((x y ...) (5 12 ...))). The first option will be simpler to program, but the second will be more easily adapted for an object-oriented language at the end of the course. The exact way you decide to implement looking up a binding, creating a new binding, or updating an existing binding is up to you. It is not essential that you be efficient here, just do something that works and uses good functional-style coding. With such a simple language, an efficient state is unneeded.
-
-What you do have to do is use abstraction to separate your state from the rest of your interpreter. As we increase the number of language features we have in future parts of the project, we will need to change how the state is implemented. If you correctly use abstraction, you will be able to redesign the state without changing the implementation of your interpreter. In this case, that means that the functions that implement the denotational semantics do not know about the structure of the state. Instead, you have generic functions that the your interpreter can call to manipulate the state.
-
-# Returning a Value
-
-Your interpreter needs to return the proper value.  How you achieve this is up to you, and we will later learn the proper way to handle the return.  A simple solution that is sufficient for this project is to have a special variable called return in the state that you assign to the return value.  When you are done interpreting the program your code can then lookup return in the state, get, and return that value.
-
-# Finally...
-
-Please save your interpreter as a Scheme or Racket file with either the .scm, .ss, or .rkt extension.
+Note that the set-box! command does not return a value. You should embed it in a begin function. Scheme begin takes one or more expressions and returns the value of the last expression. For example, (begin (set-box! b v) #t) will return #t.
