@@ -24,9 +24,9 @@ catch (e) {
 finally {
   body
 }
-
+```
 Note that either the finally or the catch block may be empty:
-
+```
 try {                     =>  (try body (catch (e) body) ())
   body
 }
@@ -54,10 +54,12 @@ You do not have to stick to strict functional programming style, but you should 
 As with the last project, your program should clearly distinguish, by naming convention and code organization, functions that are doing the M_state operations from ones doing the M_value, M_integer and/or M_boolean operations.
 
 Also as before, the launching point of your interpreter should be a function called interpret that takes a filename, calls parser with the filename, evaluates the parse tree returned by parser, and returns the proper value. You are to maintain a state for the variables and return an error message if the user attempts to use a variable before it is initialized.
-Implementing the "Goto" constructs
+
+## Implementing the "Goto" constructs
 
 You need to use continuations to properly implement return, break, continue, and throw. For each, you have two options. You can make your interpreter tail-recursive with continuation passing style (note that for this version only the M_state functions must be tail recursive, but you will need the M_value, M_integer and M_boolean functions tail recursive in part 3 of the interpreter) or you can use call/cc. Both techniques are equally challenging. You are also welcome to use cps for some of the constructs and call/cc for others.
-The Program State
+
+## The Program State
 
 To implement blocks, you need to make the following **required** change to the state/environment. In addition, because this interpreter does not require a lot of new features from the previous one, there is a **recommended** change to the state that may help reduce the work required when we get to Part 3 of the interpreter.
 
