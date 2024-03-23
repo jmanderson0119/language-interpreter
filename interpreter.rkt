@@ -1,7 +1,7 @@
 ;;;; ************************
 ;;;; Jacob Anderson (jma195), Hayden Caldwell (hwc11), David Kraus (dek90)
 ;;;; CSDS 345 Spring 2024
-;;;; Simple Language Interpreter Project
+;;;; Flow Control Interpreter Project
 ;;;; ************************
 
 #lang racket
@@ -12,17 +12,17 @@
 
 ;;;; STATE MANAGEMENT ABSTRACTION
 
-;; getter
-(define get (lambda (state) state))
-
 ;; abstraction for the current variable in the state recursion
-(define curr-variable (lambda (state) (caar state)))
+(define curr-variable (lambda (state) (caaar state)))
 
 ;; abstraction for the value of the current variable in the state recursion
-(define curr-val (lambda (state) (cadr (car state))))
+(define curr-val (lambda (state) (cadr (car (car state)))))
 
-;; abstraction for the rest of the state to recurse over
-(define remaining-state (lambda (state) (cdr state)))
+;; abstraction for the current variable in the layer recursion
+(define layer-curr-variable (lambda (state) (caar state)))
+
+;; abstraction for the value of the current variable in the layer recursion
+(define layer-curr-val (lambda (state) (cadr (car state))))
 
 
 ;;;; ERROR MESSAGES
@@ -36,53 +36,106 @@
 
 ;;;; STATE MANAGEMENT FUNCTIONS
 
-;; search for a variable in the specified state
-(define invoke
-    (lambda (var state)
-        (cond 
-            ((null? state) #f)
-            ((eq? var (curr-variable state)) #t)
-            (else (invoke var (remaining-state state))))))
+;; creates a brand new state containing one state layer
+(define create-new-state (lambda () '(())))
 
-;; lookup a value from a known binding
+;; adds a new layer to state
+(define add-state-layer (lambda (state) (cons '() state)))
+
+;; removes the top layer of state
+(define remove-state-layer (lambda (state) (cdr state)))
+
+;; confirm the existence of a variable in the specified state
+(define contains
+    (lambda (var state)
+        (cond
+            [(null? state)                                      #f]
+            [(null? (car state))                                (contains var (cdr state))]
+            [(and (list? (car state)) (eq? var (curr-variable state)))  #t]
+            [else                                               (contains var (cons (cdr (car state)) (cdr state)))]
+        )))
+
+;; confirm the existence of a variable in a specified layer
+(define layer-contains
+    (lambda (var layer)
+        (cond 
+            [(null? layer)                          #f]
+            [(eq? var (layer-curr-variable layer))  #t]
+            [else                                   (layer-contains var (cdr layer))]
+        )))
+
+;; lookup a variable's binding and return value assigned to it
 (define lookup
     (lambda (var state)
-        (cond 
-            ((not (invoke var state)) (error-message))
-            ((eq? var (curr-variable state)) (curr-val state))
-            (invoke var (remaining-state state)))))
+        (cond
+            [(not (contains var state))         (error-message)]
+            [(null? (car state))                (lookup var (cdr state))]
+            [(eq? var (curr-variable state))    (curr-val state)]
+            [else                               (lookup var (cons (cdr (car state)) (cdr state)))]
+        )))
 
-;; add a new binding to the state
+;; lookup a value from a known binding in a layer
+(define layer-lookup
+    (lambda (var layer)
+        (cond 
+            [(not (layer-contains var layer))       (error-message)]
+            [(eq? var (layer-curr-variable layer))  (layer-curr-val layer)]
+            [else                                   (layer-contains var (cdr layer))]
+        )))
+
+;; add a new binding to the state in the current scope
 (define create-binding
     (lambda (var val state)
+        (cond
+            [(contains var state)   (create-binding-error-message)]
+            [else                   (cons (cons (cons var (cons val '())) (car state)) (cdr state))]
+        )))
+
+;; add a new binding to the state
+(define layer-create-binding
+    (lambda (var val layer)
         (cond 
-            ((null? state) (cons (list var val) state))
-            ((not (lookup var state)) (cons (list var val) state))
-            (else (create-binding-error-message)))))
+            [(not (layer-contains var layer))   (cons (list var val) layer)]
+            [else                               (create-binding-error-message)]
+        )))
 
 ;; update a binding currently in the state
 (define update-binding
     (lambda (var val state)
-        (cond 
-            ((null? state) (error-message))
-            ((invoke var state) (create-binding var val (delete-binding var state)))
-            (else (create-binding var val state)))))
-
-;; delete a binding currently in the state
-(define delete-binding
-    (lambda (var state)
         (cond
-            ((or (null? state) (not (invoke var state))) state)
-            ((eq? var (curr-variable state)) (remaining-state state))
-            (else (cons (car state) (delete-binding var (remaining-state state)))))))
+            [(not (contains var state))                                                         (error-message)]
+            [(and (not (layer-contains var (car state))) (layer-contains var (cadr state)))     (cons (car state) (update-binding var val (cdr state)))]
+            [(eq? var (curr-variable state))                                                    (cons (cons (cons var (cons val '())) (cdr (car state))) (cdr state))]
+            [else                                                                               (cons (cons (caar state) (layer-update-binding var val (cdr (car state)))) (cdr state))]
+        )))
+
+;; update a binding currently in the specified layer
+(define layer-update-binding
+    (lambda (var val layer)
+        (cond 
+            [(null? layer)                (error-message)]
+            [(layer-contains var layer)   (layer-create-binding var val (layer-delete-binding var layer))]
+            [else                         (layer-create-binding var val layer)]
+        )))
+
+;; delete a binding currently in the specified layer
+(define layer-delete-binding
+    (lambda (var layer)
+        (cond
+            [(or (null? layer) (not (layer-contains var layer)))    layer]
+            [(eq? var (layer-curr-variable layer))                  (cdr layer)]
+            [else                                                   (cons (car layer) (layer-delete-binding var (cdr layer)))]
+        )))
+
 
 ;;;; VALUE FUNCTION ABSTRACTION
 
 ;; abstraction for type of expression
 (define expr-type (lambda (expr) 
-                    (if (list? expr)
-                    (car expr)
-                    expr)))
+    (if (list? expr)
+        (car expr)
+        expr)))
+
 ;; abstraction for first operand
 (define firstoperand 
     (lambda (expr state) 
@@ -123,7 +176,7 @@
             ((and (list? expr) (eq? (expr-type expr) '>=)) (>= (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
             ((and (list? expr) (eq? (expr-type expr) '||)) (or (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
             ((and (list? expr) (eq? (expr-type expr) '&&)) (and (eval-expression (firstoperand expr state) state) (eval-expression (secondoperand expr state) state)))
-            ((symbol? (expr-type expr)) (invoke (expr-type expr) state)))))
+            ((symbol? (expr-type expr)) (lookup (expr-type expr) state)))))
 
 
 ;;;; STATE FUNCTION ABSTRACTIONS
@@ -216,7 +269,7 @@
 ;; interpret calls 'parser' and returns the syntax tree to an evaluation function
 (define interpret
     (lambda (filename)
-        (eval-syntaxtree (parser filename) '())))
+        (eval-syntaxtree (parser filename) (create-new-state))))
 
 ;; eval-syntaxtree will continue through 
 (define eval-syntaxtree
@@ -225,7 +278,7 @@
             ((null? syntaxtree) (void))
             ((eq? (stmt-type (car syntaxtree)) 'return) (eval-statement (car syntaxtree) state))
             (else (eval-syntaxtree (cdr syntaxtree) (eval-statement (car syntaxtree) state))))))
-                   
+
 (interpret "test1.txt")
 ;test 1 works
 ;test 2 works
