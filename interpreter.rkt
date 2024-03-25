@@ -219,6 +219,12 @@
 ;; abstraction for declaration-only condition
 (define declaration-only? (lambda (stmt) (eq? (length stmt) 2)))
 
+;; abstraction for try body
+(define try-body (lambda (stmt) (caddr stmt)))
+
+;; abstraction for finally body
+(define finally-body (lambda (stmt) (caddr stmt)))
+
 
 ;;;; STATE FUNCTIONS
 
@@ -248,6 +254,14 @@
             (eval-while stmt (eval-statement (while-body stmt) state (next (lambda (s) (eval-while stmt s next break continue throw))) break continue throw) )
             (next state))))
 
+;; evaluates try-catch-finally blocks
+(define eval-try
+  (lambda (stmt state next break continue throw)
+    (eval-statement (try-body stmt) state next break continue throw)
+    (cond
+      ((not (state)) break))
+    (eval-statement (finally-body stmt) state next break continue throw)))
+
 
 ;; STATE PROCEDURES
 
@@ -261,7 +275,8 @@
             ((eq? (stmt-type stmt) 'return) (eval-return stmt state))
             ((and (eq? (stmt-type stmt) 'if) (no-else-statement? stmt)) (eval-if-then stmt state next oldbreak oldContinue oldThrow))
             ((eq? (stmt-type stmt) 'if) (eval-if-then-else stmt state next oldbreak oldContinue oldThrow))
-            ((eq? (stmt-type stmt) 'while) (eval-while stmt state next (oldbreak (lambda (s) (next s))) (oldContinue (lambda (s) (eval-while stmt s next (oldbreak (lambda (s) (next s))) oldContinue oldThrow))) (oldThrow (lambda (error) (oldThrow error))))))))
+            ((eq? (stmt-type stmt) 'while) (eval-while stmt state next (oldbreak (lambda (s) (next s))) (oldContinue (lambda (s) (eval-while stmt s next (oldbreak (lambda (s) (next s))) oldContinue oldThrow))) (oldThrow (lambda (error) (oldThrow error)))))
+            ((eq? (stmt-type stmt) 'try) (eval-try stmt state next oldbreak oldContinue oldThrow)))))
 
 
 ;;;; INTERPRET
