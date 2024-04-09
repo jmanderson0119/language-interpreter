@@ -1,6 +1,6 @@
 ; If you are using scheme instead of racket, comment these two lines, uncomment the (load "simpleParser.scm") and comment the (require "simpleParser.rkt")
 #lang racket
-(require "simpleParser.rkt")
+(require "functionParser.rkt")
 ; (load "simpleParser.scm")
 
 ; An interpreter for the simple language using tail recursion for the M_state functions and does not handle side effects.
@@ -15,6 +15,99 @@
      (interpret-statement-list (parser file) (newenvironment) (lambda (v) v)
                                (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
                                (lambda (v env) (myerror "Uncaught exception thrown")) (lambda (env) env)))))
+
+(define make-closure
+  (lambda (params body env)
+    (list 'closure params body env)))
+
+(define interpret-function-definition
+  (lambda (name params body environment)
+    (let ((closure (make-closure params body environment)))
+      (insert-function name closure environment))))
+
+(define insert-function
+  (lambda (func-name closure environment)
+    (let* ((frame (car environment))
+           (rest-env (cdr environment))
+           (new-binding (cons func-name closure))
+           (new-frame (cons new-binding frame)))
+      (if (assoc func-name frame)
+          (error "Function already defined: " func-name)
+          (cons new-frame rest-env)))))
+
+(define lookup-function
+  (lambda (func-name environment)
+    (if (null? environment)
+        (error "Undefined function: " func-name)
+        (let ((binding (assoc func-name (car environment))))
+          (if binding
+              (cdr binding)
+              (lookup-function func-name (cdr environment)))))))
+
+(define eval-arguments
+  (lambda (args env)
+    (if (null? args)
+        '() ; No more arguments, return an empty list
+        (cons (eval-expression (car args) env) ; Evaluate the current argument and add it to the list
+              (eval-arguments (cdr args) env))))) ; Recursively evaluate the rest of the arguments
+
+(define extend-environment
+  (lambda (params args env)
+    (if (null? params)
+        env ; All parameters have been processed, return the extended environment
+        (extend-environment (cdr params) (cdr args) ; Process the rest of the parameters and arguments
+                            (cons (cons (car params) (car args)) env))))) ; Bind the current parameter to the evaluated argument
+
+(define interpret-function-call
+  (lambda (func-name args env)
+    (let* ((closure (lookup-function func-name env)) ; Retrieve the function closure from the environment
+           (params (closure-params closure)) ; Extract the parameter names from the closure
+           (body (closure-body closure)) ; Extract the function body from the closure
+           (defining-env (closure-env closure)) ; Extract the defining environment from the closure
+           (evaluated-args (eval-arguments args env)) ; Evaluate the function call arguments
+           (call-env (extend-environment params evaluated-args defining-env))) ; Create the new environment for the call
+      (interpret-statement-list body ; The function body
+                          call-env ; The environment for the function call
+                          (lambda (v) v) ; Return continuation (handle function return value)
+                          (lambda (env) (error "Break outside of loop")) ; Break continuation (error if used outside loop)
+                          (lambda (env) (error "Continue outside of loop")) ; Continue continuation (error if used outside loop)
+                          (lambda (v env) (error "Uncaught exception")) ; Throw continuation (handle exceptions)
+                          (lambda (env) env))))) ; Next continuation (when the function body completes)))) ; Interpret the function body in the new environment
+
+(define closure-params
+  (lambda (closure)
+    (cadr closure))) ; Assuming closure is structured as '(closure params body env)
+
+(define closure-body
+  (lambda (closure)
+    (caddr closure))) ; Assuming closure is structured as '(closure params body env)
+
+(define closure-env
+  (lambda (closure)
+    (cadddr closure))) ; Assuming closure is structured as '(closure params body env)
+
+(define eval-function-call
+  (lambda (func-name args env)
+    (let* ((closure (lookup-function func-name env))
+           (params (closure-params closure))
+           (body (closure-body closure))
+           (defining-env (closure-env closure))
+           (evaluated-args (eval-arguments args env))
+           (new-env (extend-environment params evaluated-args defining-env (newframe))))
+      (let ((result (interpret-statement-list body new-env
+                                              (lambda (v) v) ; return continuation
+                                              (lambda (env) (error "Break outside of loop"))
+                                              (lambda (env) (error "Continue outside of loop"))
+                                              (lambda (v env) (error "Uncaught exception"))
+                                              (lambda (env) env))))
+        (if (pair? result) ; Check if result is a pair indicating a 'return' value
+            (car result) ; Extract the return value
+            (error "Function did not return a value"))))))
+
+(define interpret-function-call-statement
+  (lambda (func-name args env)
+    (eval-function-call func-name args env) ; Reuse the eval-function-call logic
+    env)) ; Return the original environment unchanged or updated if global state is modified
 
 ; interprets a list of statements.  The state/environment from each statement is used for the next ones.
 (define interpret-statement-list
@@ -382,4 +475,6 @@
                             str
                             (makestr (string-append str (string-append " " (symbol->string (car vals)))) (cdr vals))))))
       (error-break (display (string-append str (makestr "" vals)))))))
+
+(parser "test1.txt")
 
