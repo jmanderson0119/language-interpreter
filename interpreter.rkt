@@ -219,6 +219,12 @@
 ;; abstraction for declaration-only condition
 (define declaration-only? (lambda (stmt) (eq? (length stmt) 2)))
 
+;; abstraction for try body
+(define try-body (lambda (stmt) (caddr stmt)))
+
+;; abstraction for finally body
+(define finally-body (lambda (stmt) (caddr stmt)))
+
 
 ;;;; STATE FUNCTIONS
 
@@ -229,39 +235,48 @@
 
 ;; evaluates if statements without else-statement
 (define eval-if-then
-    (lambda (stmt state)
+    (lambda (stmt state next break continue throw)
         (if (eval-expression (condition stmt) state)
-            (eval-statement (then-statement stmt) state)
-            (void))))
+            (eval-statement (then-statement stmt) state next break continue throw)
+            (next state))))
 
 ;; evaluates if statements with else-statement
 (define eval-if-then-else
-    (lambda (stmt state)
+    (lambda (stmt state next break continue throw)
         (if (eval-expression (condition stmt) state)
-            (eval-statement (then-statement stmt) state)
-            (eval-statement (else-statment stmt) state))))
+            (eval-statement (then-statement stmt) state next break continue throw )
+            (eval-statement (else-statment stmt) state next break continue throw))))
 
 ;; evaluates while statements
 (define eval-while
-    (lambda (stmt state)
+    (lambda (stmt state next break continue throw)
         (if (eval-expression (condition stmt) state)
-            (eval-while stmt (eval-statement (while-body stmt) state))
-            (void))))
+            (eval-while stmt (eval-statement (while-body stmt) state (next (lambda (s) (eval-while stmt s next break continue throw))) break continue throw) )
+            (next state))))
+
+;; evaluates try-catch-finally blocks
+(define eval-try
+  (lambda (stmt state next break continue throw)
+    (eval-statement (try-body stmt) state next break continue throw)
+    (cond
+      ((not (state)) break))
+    (eval-statement (finally-body stmt) state next break continue throw)))
 
 
 ;; STATE PROCEDURES
 
 ;; selects the appropriate evaluation procedure for a given statement
 (define eval-statement
-    (lambda (stmt state)
+    (lambda (stmt state next oldbreak oldContinue oldThrow)
         (cond
             ((and (eq? (stmt-type stmt) 'var) (declaration-only? stmt)) (create-binding (varname stmt) 'null state))
             ((eq? (stmt-type stmt) 'var) (create-binding (varname stmt) (eval-expression (varval stmt state) state) state))
             ((eq? (stmt-type stmt) '=) (update-binding (varname stmt) (eval-expression (varval stmt state) state) state))
             ((eq? (stmt-type stmt) 'return) (eval-return stmt state))
-            ((and (eq? (stmt-type stmt) 'if) (no-else-statement? stmt)) (eval-if-then stmt state))
-            ((eq? (stmt-type stmt) 'if) (eval-if-then-else stmt state))
-            ((eq? (stmt-type stmt) 'while) (eval-while stmt state)))))
+            ((and (eq? (stmt-type stmt) 'if) (no-else-statement? stmt)) (eval-if-then stmt state next oldbreak oldContinue oldThrow))
+            ((eq? (stmt-type stmt) 'if) (eval-if-then-else stmt state next oldbreak oldContinue oldThrow))
+            ((eq? (stmt-type stmt) 'while) (eval-while stmt state next (oldbreak (lambda (s) (next s))) (oldContinue (lambda (s) (eval-while stmt s next (oldbreak (lambda (s) (next s))) oldContinue oldThrow))) (oldThrow (lambda (error) (oldThrow error)))))
+            ((eq? (stmt-type stmt) 'try) (eval-try stmt state next oldbreak oldContinue oldThrow)))))
 
 
 ;;;; INTERPRET
@@ -276,8 +291,8 @@
     (lambda (syntaxtree state)
         (cond
             ((null? syntaxtree) (void))
-            ((eq? (stmt-type (car syntaxtree)) 'return) (eval-statement (car syntaxtree) state))
-            (else (eval-syntaxtree (cdr syntaxtree) (eval-statement (car syntaxtree) state))))))
+            ((eq? (stmt-type (car syntaxtree)) 'return) (eval-statement (car syntaxtree) state state (error "Break statement not within a loop") (error "Continue statement not within a loop") (error "Unhandled exception" error)))
+            (else (eval-syntaxtree (cdr syntaxtree) (eval-statement (car syntaxtree) state state (error "Break statement not within a loop") (error "Continue statement not within a loop") (error "Unhandled exception" error)))))))
 
 (interpret "test1.txt")
 ;test 1 works
