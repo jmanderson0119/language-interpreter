@@ -96,57 +96,36 @@
 
 (define interpret-function-definition
   (lambda (name params body environment)
-    (let ((closure (make-closure params body environment)))
-      (insert-function name closure environment))))
+      (insert-function name (make-closure params body environment) environment)))
+
+(define interpret-function-call
+  (lambda (func-name args env)
+      (interpret-statement-list body (extend-environment (closure-params closure) (eval-argument args env) (closure-env (lookup-function func-name env))) (lambda (v) v) (lambda (env) (error "Break outside of loop")) (lambda (env) (error "Continue outside of loop")) (lambda (v env) (error "Uncaught exception")) (lambda (env) env))))
 
 (define insert-function
   (lambda (func-name closure environment)
-    (let* ((frame (car environment))
-           (rest-env (cdr environment))
-           (new-binding (cons func-name closure))
-           (new-frame (cons new-binding frame)))
-      (if (assoc func-name frame)
+      (if (assoc func-name (car environment))
           (error "Function already defined: " func-name)
-          (cons new-frame rest-env)))))
+          (cons (cons func-name (car environment)) (cdr environment)))))
 
 (define lookup-function
   (lambda (func-name environment)
-    (if (null? environment)
-        (error "Undefined function: " func-name)
-        (let ((binding (assoc func-name (car environment))))
-          (if binding
-              (cdr binding)
-              (lookup-function func-name (cdr environment)))))))
+    (cond 
+      ((null? environment) (error "Undefined function: " func-name))
+      ((assoc func-name (car environment)) (cdr binding))
+      (else (lookup-function func-name (cdr environment))))))
 
 (define eval-arguments
   (lambda (args env)
     (if (null? args)
         '() ; No more arguments, return an empty list
-        (cons (eval-expression (car args) env) ; Evaluate the current argument and add it to the list
-              (eval-arguments (cdr args) env))))) ; Recursively evaluate the rest of the arguments
+        (cons (eval-expression (car args) env) (eval-arguments (cdr args) env))))) ;  Recursively evaluate the rest of the arguments + evaluate the current argument and add it to the list
 
 (define extend-environment
   (lambda (params args env)
     (if (null? params)
         env ; All parameters have been processed, return the extended environment
-        (extend-environment (cdr params) (cdr args) ; Process the rest of the parameters and arguments
-                            (cons (cons (car params) (car args)) env))))) ; Bind the current parameter to the evaluated argument
-
-(define interpret-function-call
-  (lambda (func-name args env)
-    (let* ((closure (lookup-function func-name env)) ; Retrieve the function closure from the environment
-           (params (closure-params closure)) ; Extract the parameter names from the closure
-           (body (closure-body closure)) ; Extract the function body from the closure
-           (defining-env (closure-env closure)) ; Extract the defining environment from the closure
-           (evaluated-args (eval-arguments args env)) ; Evaluate the function call arguments
-           (call-env (extend-environment params evaluated-args defining-env))) ; Create the new environment for the call
-      (interpret-statement-list body ; The function body
-                          call-env ; The environment for the function call
-                          (lambda (v) v) ; Return continuation (handle function return value)
-                          (lambda (env) (error "Break outside of loop")) ; Break continuation (error if used outside loop)
-                          (lambda (env) (error "Continue outside of loop")) ; Continue continuation (error if used outside loop)
-                          (lambda (v env) (error "Uncaught exception")) ; Throw continuation (handle exceptions)
-                          (lambda (env) env))))) ; Next continuation (when the function body completes)))) ; Interpret the function body in the new environment
+        (extend-environment (cdr params) (cdr args) (cons (cons (car params) (car args)) env))))) ; Process the rest of the parameters and arguments + bind the current parameter to the evaluated argument
 
 (define closure-params
   (lambda (closure)
@@ -162,26 +141,13 @@
 
 (define eval-function-call
   (lambda (func-name args env)
-    (let* ((closure (lookup-function func-name env))
-           (params (closure-params closure))
-           (body (closure-body closure))
-           (defining-env (closure-env closure))
-           (evaluated-args (eval-arguments args env))
-           (new-env (extend-environment params evaluated-args defining-env (newframe))))
-      (let ((result (interpret-statement-list body new-env
-                                              (lambda (v) v) ; return continuation
-                                              (lambda (env) (error "Break outside of loop"))
-                                              (lambda (env) (error "Continue outside of loop"))
-                                              (lambda (v env) (error "Uncaught exception"))
-                                              (lambda (env) env))))
-        (if (pair? result) ; Check if result is a pair indicating a 'return' value
-            (car result) ; Extract the return value
-            (error "Function did not return a value"))))))
+    (if (pair? (interpret-statement-list (closure-body (lookup-function func-name env)) (extend-environment (closure-params (lookup-function func-name env))) (lambda (v) v) (lambda (env) (error "Break outside of loop")) (lambda (env) (error "Continue outside of loop")) (lambda (v env) (error "Uncaught exception")) (lambda (env) env)))
+      (car (interpret-statement-list (closure-body (lookup-function func-name env)) (extend-environment (closure-params (lookup-function func-name env))) (lambda (v) v) (lambda (env) (error "Break outside of loop")) (lambda (env) (error "Continue outside of loop")) (lambda (v env) (error "Uncaught exception")) (lambda (env) env)))
+      (error "Function did not return a value"))))
 
 (define interpret-function-call-statement
   (lambda (func-name args env)
-    (eval-function-call func-name args env) ; Reuse the eval-function-call logic
-    env)) ; Return the original environment unchanged or updated if global state is modified
+    (eval-function-call func-name args env) env)) ; Reuse the eval-function-call logic + return the original environment unchanged or updated if global state is modified
 
 ; interprets a list of statements.  The state/environment from each statement is used for the next ones.
 (define interpret-statement-list
@@ -243,13 +209,7 @@
 ; Interprets a block.  The break, continue, throw and "next statement" continuations must be adjusted to pop the environment
 (define interpret-block
   (lambda (statement environment return break continue throw next)
-    (interpret-statement-list (cdr statement)
-                                         (push-frame environment)
-                                         return
-                                         (lambda (env) (break (pop-frame env)))
-                                         (lambda (env) (continue (pop-frame env)))
-                                         (lambda (v env) (throw v (pop-frame env)))
-                                         (lambda (env) (next (pop-frame env))))))
+    (interpret-statement-list (cdr statement) (push-frame environment) return (lambda (env) (break (pop-frame env))) (lambda (env) (continue (pop-frame env))) (lambda (v env) (throw v (pop-frame env))) (lambda (env) (next (pop-frame env))))))
 
 ; We use a continuation to throw the proper value.  Because we are not using boxes, the environment/state must be thrown as well so any environment changes will be kept
 (define interpret-throw
@@ -265,27 +225,13 @@
     (cond
       ((null? catch-statement) (lambda (ex env) (interpret-block finally-block env return break continue throw (lambda (env2) (throw ex env2))))) 
       ((not (eq? 'catch (statement-type catch-statement))) (myerror "Incorrect catch statement"))
-      (else (lambda (ex env)
-                  (interpret-statement-list 
-                       (get-body catch-statement) 
-                       (insert (catch-var catch-statement) ex (push-frame env))
-                       return 
-                       (lambda (env2) (break (pop-frame env2))) 
-                       (lambda (env2) (continue (pop-frame env2))) 
-                       (lambda (v env2) (throw v (pop-frame env2))) 
-                       (lambda (env2) (interpret-block finally-block (pop-frame env2) return break continue throw next))))))))
+      (else (lambda (ex env) (interpret-statement-list (get-body catch-statement) (insert (catch-var catch-statement) ex (push-frame env))return (lambda (env2) (break (pop-frame env2))) (lambda (env2) (continue (pop-frame env2))) (lambda (v env2) (throw v (pop-frame env2))) (lambda (env2) (interpret-block finally-block (pop-frame env2) return break continue throw next))))))))
 
 ; To interpret a try block, we must adjust  the return, break, continue continuations to interpret the finally block if any of them are used.
 ;  We must create a new throw continuation and then interpret the try block with the new continuations followed by the finally block with the old continuations
 (define interpret-try
   (lambda (statement environment return break continue throw next)
-    (let* ((finally-block (make-finally-block (get-finally statement)))
-           (try-block (make-try-block (get-try statement)))
-           (new-return (lambda (v) (interpret-block finally-block environment return break continue throw (lambda (env2) (return v)))))
-           (new-break (lambda (env) (interpret-block finally-block env return break continue throw (lambda (env2) (break env2)))))
-           (new-continue (lambda (env) (interpret-block finally-block env return break continue throw (lambda (env2) (continue env2)))))
-           (new-throw (create-throw-catch-continuation (get-catch statement) environment return break continue throw next finally-block)))
-      (interpret-block try-block environment new-return new-break new-continue new-throw (lambda (env) (interpret-block finally-block env return break continue throw next))))))
+      (interpret-block (make-try-block (get-try statement)) environment (lambda (v) (interpret-block finally-block environment return break continue throw (lambda (env2) (return v)))) (lambda (env) (interpret-block finally-block env return break continue throw (lambda (env2) (break env2)))) (lambda (env) (interpret-block finally-block env return break continue throw (lambda (env2) (continue env2)))) (create-throw-catch-continuation (get-catch statement) environment return break continue throw next finally-block) (lambda (env) (interpret-block finally-block env return break continue throw next))))))
 
 ; helper methods so that I can reuse the interpret-block method on the try and finally blocks
 (define make-try-block
