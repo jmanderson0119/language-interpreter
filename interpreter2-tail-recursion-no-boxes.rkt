@@ -8,13 +8,87 @@
 ; The functions that start interpret-...  all return the current environment.  These are the M_state functions.
 ; The functions that start eval-...  all return a value.  These are the M_value and M_boolean functions.
 
-; The main function.  Calls parser to get the parse tree and interprets it with a new environment.  Sets default continuations for return, break, continue, throw, and "next statement"
+; Interprets the main method of a specified class in a parsed program file.
+; This function takes a file name and a class name as arguments, parses the program
+; file, and searches for the specified class by name
 (define interpret
-  (lambda (file)
-    (scheme->language
-     (interpret-statement-list (parser file) (newenvironment) (lambda (v) v)
-                               (lambda (env) (myerror "Break used outside of loop")) (lambda (env) (myerror "Continue used outside of loop"))
-                               (lambda (v env) (myerror "Uncaught exception thrown")) (lambda (env) env)))))
+  (lambda (file class-name)
+    ((lambda (parse-tree)
+       ((lambda (class-definition)
+          (if class-definition
+              ((lambda (main-method)
+                 (if main-method
+                     (interpret-function-call 'main '() (newenvironment))
+                     (myerror "Main method not found in class: " class-name)))
+               (lookup-method 'main class-definition))
+              (myerror "Class not found: " class-name)))
+        (lookup-class class-name parse-tree)))
+     (parser file))))
+
+(define make-class-closure
+  (lambda (parent fields methods class-fields constructors)
+    (list 'class parent fields methods class-fields constructors)))
+
+(define make-instance-closure
+  (lambda (class fields)
+    (list 'instance class fields)))
+
+(define class-parent
+  (lambda (class-closure)
+    (cadr class-closure)))
+
+(define class-fields
+  (lambda (class-closure)
+    (caddr class-closure)))
+
+(define class-methods
+  (lambda (class-closure)
+    (cadddr class-closure)))
+
+(define class-class-fields
+  (lambda (class-closure)
+    (if (> (length class-closure) 4)
+        (car (cddddr class-closure))
+        '())))
+
+(define class-constructors
+  (lambda (class-closure)
+    (if (> (length class-closure) 5)
+        (cdr (cddddr class-closure))
+        '())))
+
+(define instance-class
+  (lambda (instance-closure)
+    (cadr instance-closure)))
+
+(define instance-fields
+  (lambda (instance-closure)
+    (caddr instance-closure)))
+
+(define instance-get-field
+  (lambda (instance field)
+    (if (assoc field (instance-fields instance))
+      (cdr (assoc field (instance-fields instance)))
+      (error "Field not found in instance"))))
+
+(define instance-set-field
+  (lambda (instance field value)
+    (if (assoc field (instance-fields instance))
+      (set-cdr! (assoc field (instance-fields instance)))
+      (error "Field not found in instance"))))
+
+(define class-get-field
+  (lambda (class field)
+    (cond
+      ((assoc field (class-fields class)) (cdr (assoc field (class-fields class))))
+      ((assoc field (class-class-fields class)) (cdr (assoc field (class-class-fields class))))
+      (else (error "Field not found in class")))))
+
+(define class-set-field
+  (lambda (class field value)
+    (if (assoc field (class-fields class))
+      (set-cdr! existing-field value)
+      (error "Field not found in class"))))
 
 (define make-closure
   (lambda (params body env)
